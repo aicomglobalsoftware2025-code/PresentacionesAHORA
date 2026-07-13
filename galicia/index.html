@@ -92,9 +92,10 @@
   .objective p b{ color:var(--primary); }
   .note{ font-size:12.5px; color:var(--text); margin-top:12px; font-style:italic; }
 
-  .fragment{ opacity:0; transition:opacity .45s ease, transform .45s ease; }
-  .fragment.revealed{ opacity:1; transform:none; }
-  div.fragment, li.fragment{ transform:translateY(10px); }
+  /* --- motor de animacion --- */
+  @keyframes fadeUp{ from{ opacity:0; transform:translateY(16px); } to{ opacity:1; transform:none; } }
+  @keyframes drawLine{ to{ stroke-dashoffset:0; } }
+  .fragment{ opacity:1; }
 
   .chrome{ position:fixed; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:space-between; padding:14px clamp(24px,6vw,92px); z-index:20; pointer-events:none; }
   .dots{ display:flex; gap:8px; pointer-events:auto; }
@@ -109,7 +110,7 @@
   :focus-visible{ outline:2px solid var(--primary); outline-offset:3px; }
 
   @media (max-width:820px){ .panels,.scope{ grid-template-columns:1fr; } .whyrow{ grid-template-columns:1fr; gap:6px; } .hint{ display:none; } }
-  @media (prefers-reduced-motion:reduce){ *{ transition:none !important; } }
+  @media (prefers-reduced-motion:reduce){ *{ transition:none !important; animation:none !important; } .slide .content>*, .slide.cover>*{ opacity:1 !important; transform:none !important; } }
 </style>
 </head>
 <body>
@@ -373,54 +374,66 @@
   const counter = document.getElementById('counter');
   const prevBtn = document.getElementById('prev');
   const nextBtn = document.getElementById('next');
-
-  let current = 0, revealed = 0;
-
-  const fragmentsOf = s => Array.from(s.querySelectorAll('.fragment')).sort((a,b)=>(+a.dataset.step)-(+b.dataset.step));
-  const stepCount = s => new Set(fragmentsOf(s).map(f=>f.dataset.step)).size;
-  const showUpTo = (s,step)=> fragmentsOf(s).forEach(f=> f.classList.toggle('revealed',(+f.dataset.step)<=step));
+  const reduce = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  let current = 0;
 
   slides.forEach((_,i)=>{
     const d=document.createElement('button'); d.className='dot';
     d.setAttribute('aria-label','Ir a diapositiva '+(i+1));
-    d.addEventListener('click',e=>{e.stopPropagation();goTo(i,'all');});
+    d.addEventListener('click',e=>{e.stopPropagation();goTo(i);});
     dotsWrap.appendChild(d);
   });
   const dots = Array.from(dotsWrap.children);
+
+  function animateSlide(slide){
+    if(reduce) return;
+    const scope = slide.querySelector('.content') || slide;
+    const blocks = Array.from(scope.children);
+    blocks.forEach((el,i)=>{
+      el.style.animation='none'; void el.offsetWidth;
+      el.style.animation='fadeUp .5s ease '+(i*0.09).toFixed(2)+'s both';
+    });
+    const base = blocks.length*0.09 + 0.15;
+    slide.querySelectorAll('svg').forEach(svg=>{
+      const strokes = Array.from(svg.querySelectorAll('line,path,polyline')).filter(function(el){
+        if(el.closest('defs')) return false;
+        const s = el.getAttribute('stroke');
+        return s && s!=='none';
+      });
+      strokes.forEach((el,i)=>{
+        el.style.animation='none'; void el.offsetWidth;
+        el.setAttribute('pathLength','1');
+        el.style.strokeDasharray='1'; el.style.strokeDashoffset='1';
+        el.style.animation='drawLine .55s ease '+(base+i*0.06).toFixed(2)+'s forwards';
+      });
+    });
+  }
 
   function render(){
     slides.forEach((s,i)=> s.classList.toggle('active',i===current));
     dots.forEach((d,i)=> d.classList.toggle('active',i===current));
     counter.textContent=(current+1)+' / '+slides.length;
-    prevBtn.disabled=(current===0 && revealed===0);
-    nextBtn.disabled=(current===slides.length-1 && revealed>=stepCount(slides[current]));
+    prevBtn.disabled = current===0;
+    nextBtn.disabled = current===slides.length-1;
   }
-  function goTo(i,fill){
+  function goTo(i){
     current=Math.max(0,Math.min(slides.length-1,i));
-    const total=stepCount(slides[current]);
-    revealed=(fill==='all')?total:0;
-    showUpTo(slides[current],revealed); render();
+    render(); animateSlide(slides[current]);
   }
-  function next(){
-    const total=stepCount(slides[current]);
-    if(revealed<total){ revealed++; showUpTo(slides[current],revealed); render(); }
-    else if(current<slides.length-1){ goTo(current+1,'none'); }
-  }
-  function prev(){
-    if(revealed>0){ revealed--; showUpTo(slides[current],revealed); render(); }
-    else if(current>0){ goTo(current-1,'all'); }
-  }
+  function next(){ if(current<slides.length-1) goTo(current+1); }
+  function prev(){ if(current>0) goTo(current-1); }
+
   document.addEventListener('keydown',e=>{
     if(['ArrowRight','ArrowDown',' ','PageDown','Enter'].includes(e.key)){e.preventDefault();next();}
     else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){e.preventDefault();prev();}
-    else if(e.key==='Home'){goTo(0,'none');}
-    else if(e.key==='End'){goTo(slides.length-1,'all');}
+    else if(e.key==='Home'){goTo(0);}
+    else if(e.key==='End'){goTo(slides.length-1);}
   });
   document.getElementById('deck').addEventListener('click',()=>next());
   prevBtn.addEventListener('click',e=>{e.stopPropagation();prev();});
   nextBtn.addEventListener('click',e=>{e.stopPropagation();next();});
 
-  goTo(0,'none');
+  goTo(0);
 </script>
 </body>
 </html>
